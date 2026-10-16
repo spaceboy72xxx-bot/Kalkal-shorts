@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="fil">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#14232B">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<title>Kalkal</title>
+<style>
+:root{--bg:#14232B;--card:#1D3340;--ink:#F2EEE6;--mute:#9DB0B8;--acc:#FF7A59;--line:#2B4857}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,sans-serif;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+header{display:flex;align-items:center;justify-content:space-between;padding:20px 16px 8px;max-width:760px;margin:auto}
+h1{font:700 2.2rem Georgia,serif;margin:0;letter-spacing:-.02em}
+h1 small{display:block;font:400 .85rem system-ui;color:var(--mute);letter-spacing:0}
+button,input,textarea,select{font:inherit;color:inherit}
+.btn{background:var(--acc);color:#1a0d08;border:0;border-radius:10px;padding:10px 16px;font-weight:600;cursor:pointer}
+.btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+main{max-width:760px;margin:auto;padding:8px 16px 80px}
+.tabs{display:flex;gap:8px;margin:12px 0}
+.tabs button{border:1px solid var(--line);background:none;border-radius:99px;padding:6px 14px;cursor:pointer;color:var(--mute)}
+.tabs button.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.item{background:var(--card);border-radius:14px;padding:16px;margin-bottom:12px;border-left:4px solid var(--acc)}
+.item h2{font:700 1.25rem Georgia,serif;margin:0 0 2px}
+.item .g{color:var(--acc);font-size:.85rem}
+.item p{margin:8px 0;color:var(--mute)}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.eps{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.eps button{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:4px 10px;cursor:pointer}
+.empty{color:var(--mute);text-align:center;padding:40px 0}
+.meter{color:var(--mute);font-size:.8rem;text-align:center;margin-top:24px}
+dialog{background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:16px;width:min(92vw,520px);padding:18px}
+dialog::backdrop{background:#000a}
+label{display:block;margin:10px 0 4px;font-size:.9rem;color:var(--mute)}
+input,textarea,select{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px}
+video{width:100%;border-radius:10px;background:#000;max-height:70vh}
+</style>
+</head>
+<body>
+<header>
+  <h1>Kalkal<small>Mga AI short drama, nasa phone mo na.</small></h1>
+  <button class="btn" id="add">Magdagdag</button>
+</header>
+<main>
+  <div class="tabs"><button class="on" data-f="all">Lahat</button><button data-f="fav">Paborito</button></div>
+  <div id="list"></div>
+  <div class="meter" id="meter"></div>
+</main>
+
+<dialog id="dlgAdd"><form method="dialog" id="frm">
+  <h2 style="margin:0 0 4px;font-family:Georgia,serif">Bagong drama</h2>
+  <label for="t">Pamagat</label><input id="t" required maxlength="80">
+  <label for="g">Genre</label>
+  <select id="g"><option>Romance</option><option>Pamilya</option><option>Thriller</option><option>Katatakutan</option><option>Komedya</option><option>Sci-fi</option></select>
+  <label for="s">Buod</label><textarea id="s" rows="3" maxlength="300"></textarea>
+  <label for="v">Mga episode (video)</label><input id="v" type="file" accept="video/*" multiple>
+  <div class="row" style="margin-top:14px;justify-content:flex-end">
+    <button class="btn ghost" value="cancel" formnovalidate>Kanselahin</button>
+    <button class="btn" value="ok">I-save</button>
+  </div>
+</form></dialog>
+
+<dialog id="dlgPlay">
+  <div class="row" style="justify-content:space-between;margin-bottom:8px"><strong id="pt"></strong><button class="btn ghost" id="close">Isara</button></div>
+  <video id="vid" controls playsinline></video>
+</dialog>
+
+<script>
+// ---- Storage: IndexedDB (mga drama at video, nasa device) ----
+const DB='kalkal-db',ST='dramas';
+const open=()=>new Promise((res,rej)=>{const r=indexedDB.open(DB,1);
+  r.onupgradeneeded=()=>r.result.createObjectStore(ST,{keyPath:'id'});
+  r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)});
+const tx=async(mode,fn)=>{const db=await open();return new Promise((res,rej)=>{
+  const t=db.transaction(ST,mode),o=fn(t.objectStore(ST));
+  t.oncomplete=()=>res(o&&o.result);t.onerror=()=>rej(t.error)})};
+const all=()=>tx('readonly',s=>s.getAll());
+const put=d=>tx('readwrite',s=>s.put(d));
+const del=id=>tx('readwrite',s=>s.delete(id));
+
+const SEED=[
+ {id:'s1',title:'Huling Tren sa Maynila',genre:'Romance',synopsis:'Dalawang estranghero, iisang huling biyahe, at isang sulat na naiwan sa upuan.',fav:false,eps:[]},
+ {id:'s2',title:'Ang Kapitbahay sa 3B',genre:'Thriller',synopsis:'Gabi-gabing may kumakatok sa dingding. Pero walang nakatira sa kabila.',fav:false,eps:[]}
+];
+
+let filter='all';
+const $=id=>document.getElementById(id);
+const esc=s=>s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+async function render(){
+  let data=await all();
+  if(!data.length&&!localStorage.getItem('seeded')){
+    for(const d of SEED)await put(d);
+    localStorage.setItem('seeded','1');data=await all();
+  }
+  if(filter==='fav')data=data.filter(d=>d.fav);
+  $('list').innerHTML=data.length?data.map(d=>`
+   <article class="item" data-id="${d.id}">
+    <h2>${esc(d.title)}</h2><div class="g">${esc(d.genre)}</div>
+    <p>${esc(d.synopsis||'')}</p>
+    <div class="row">
+      <button class="btn ghost" data-a="fav">${d.fav?'★ Paborito':'☆ Idagdag sa paborito'}</button>
+      <button class="btn ghost" data-a="up">Mag-upload ng episode</button>
+      <button class="btn ghost" data-a="del">Burahin</button>
+    </div>
+    <div class="eps">${d.eps.length?d.eps.map((e,i)=>`<button data-a="play" data-i="${i}">▶ Ep ${i+1}</button>`).join(''):'<span style="color:var(--mute);font-size:.85rem">Wala pang episode. Mag-upload ng video.</span>'}</div>
+   </article>`).join(''):'<div class="empty">Wala pang drama dito. Pindutin ang "Magdagdag".</div>';
+  meter();
+}
+async function meter(){
+  if(!navigator.storage||!navigator.storage.estimate)return;
+  const {usage,quota}=await navigator.storage.estimate();
+  const mb=n=>(n/1048576).toFixed(1);
+  $('meter').textContent=`Storage: ${mb(usage)} MB ginamit / ${mb(quota)} MB available`;
+}
+const pick=()=>new Promise(res=>{const i=document.createElement('input');i.type='file';i.accept='video/*';i.multiple=true;i.onchange=()=>res([...i.files]);i.click()});
+const toEps=files=>files.map(f=>({name:f.name,blob:f}));
+
+$('list').addEventListener('click',async e=>{
+  const b=e.target.closest('button');if(!b)return;
+  const id=b.closest('.item').dataset.id;
+  const d=(await all()).find(x=>x.id===id);
+  if(b.dataset.a==='fav'){d.fav=!d.fav;await put(d)}
+  if(b.dataset.a==='del'&&confirm(`Burahin ang "${d.title}"?`))await del(id);
+  if(b.dataset.a==='up'){const f=await pick();if(f.length){d.eps.push(...toEps(f));await put(d)}}
+  if(b.dataset.a==='play'){
+    const ep=d.eps[+b.dataset.i];
+    $('pt').textContent=`${d.title} · Ep ${+b.dataset.i+1}`;
+    $('vid').src=URL.createObjectURL(ep.blob);$('dlgPlay').showModal();$('vid').play().catch(()=>{});
+    return;
+  }
+  render();
+});
+$('close').onclick=()=>$('dlgPlay').close();
+$('dlgPlay').addEventListener('close',()=>{const v=$('vid');v.pause();URL.revokeObjectURL(v.src);v.removeAttribute('src')});
+$('add').onclick=()=>{$('frm').reset();$('dlgAdd').showModal()};
+$('frm').addEventListener('submit',async e=>{
+  if(e.submitter.value!=='ok')return;
+  await put({id:'d'+Date.now(),title:$('t').value.trim(),genre:$('g').value,synopsis:$('s').value.trim(),fav:false,eps:toEps([...$('v').files])});
+  render();
+});
+document.querySelector('.tabs').addEventListener('click',e=>{
+  const b=e.target.closest('button');if(!b)return;
+  filter=b.dataset.f;document.querySelectorAll('.tabs button').forEach(x=>x.classList.toggle('on',x===b));render();
+});
+
+if(navigator.storage&&navigator.storage.persist)navigator.storage.persist();
+if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js');
+render();
+</script>
+</body>
+</html>
